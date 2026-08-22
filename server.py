@@ -1,55 +1,33 @@
-"""
-Custom GitHub MCP Server
-=========================
-
-A Model Context Protocol (MCP) server exposing full CRUD access to GitHub:
-repos, issues, pull requests, branches, comments, reviews, and merges.
-
-Auth:
-    Set the GITHUB_TOKEN environment variable.
-
-Run locally:
-    python server.py
-
-For Render:
-    uvicorn server:app --host 0.0.0.0 --port $PORT
-
-MCP endpoint:
-    /mcp
-"""
-
 import os
 from typing import Any
 
 import httpx
 from mcp.server.fastmcp import FastMCP
-from mcp.server.transport_security import TransportSecuritySettings
 
 
-# ---------------------------------------------------------------------------
+# ============================================================
 # Configuration
-# ---------------------------------------------------------------------------
+# ============================================================
 
 GITHUB_API = "https://api.github.com"
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 if not GITHUB_TOKEN:
     raise RuntimeError(
-        "GITHUB_TOKEN environment variable is not set. "
-        "Set GITHUB_TOKEN in your environment before starting the server."
+        "GITHUB_TOKEN environment variable is not set."
     )
 
 
-# ---------------------------------------------------------------------------
+# ============================================================
 # MCP Server
-# ---------------------------------------------------------------------------
+# ============================================================
 
 mcp = FastMCP("github-mcp")
 
 
-# ---------------------------------------------------------------------------
-# GitHub API helpers
-# ---------------------------------------------------------------------------
+# ============================================================
+# GitHub API
+# ============================================================
 
 def _client() -> httpx.Client:
     return httpx.Client(
@@ -64,37 +42,42 @@ def _client() -> httpx.Client:
 
 
 def _request(method: str, path: str, **kwargs) -> Any:
-    """Make a GitHub API request and return parsed JSON."""
+    """Make a GitHub API request."""
 
     with _client() as client:
-        resp = client.request(method, path, **kwargs)
+        response = client.request(
+            method,
+            path,
+            **kwargs,
+        )
 
-    if resp.status_code >= 400:
-        detail = resp.text[:500]
+    if response.status_code >= 400:
+        detail = response.text[:500]
         raise RuntimeError(
-            f"GitHub API error {resp.status_code} "
+            f"GitHub API error {response.status_code} "
             f"for {method} {path}: {detail}"
         )
 
-    if resp.status_code == 204 or not resp.content:
+    if response.status_code == 204 or not response.content:
         return {
             "status": "ok",
-            "code": resp.status_code,
+            "code": response.status_code,
         }
 
-    return resp.json()
+    return response.json()
 
 
-# ---------------------------------------------------------------------------
-# Repositories
-# ---------------------------------------------------------------------------
+# ============================================================
+# REPOSITORIES
+# ============================================================
 
 @mcp.tool()
 def list_repos(
     owner: str | None = None,
     per_page: int = 30,
 ) -> Any:
-    """List repositories for the authenticated user or owner/org."""
+    """List repositories for the authenticated user or a given owner."""
+
     if owner:
         return _request(
             "GET",
@@ -110,17 +93,21 @@ def list_repos(
 
 
 @mcp.tool()
-def get_repo(owner: str, repo: str) -> Any:
+def get_repo(
+    owner: str,
+    repo: str,
+) -> Any:
     """Get details about a repository."""
+
     return _request(
         "GET",
         f"/repos/{owner}/{repo}",
     )
 
 
-# ---------------------------------------------------------------------------
-# Issues
-# ---------------------------------------------------------------------------
+# ============================================================
+# ISSUES
+# ============================================================
 
 @mcp.tool()
 def list_issues(
@@ -129,7 +116,8 @@ def list_issues(
     state: str = "open",
     per_page: int = 30,
 ) -> Any:
-    """List issues in a repo."""
+    """List issues in a repository."""
+
     return _request(
         "GET",
         f"/repos/{owner}/{repo}/issues",
@@ -147,6 +135,7 @@ def get_issue(
     issue_number: int,
 ) -> Any:
     """Get a single issue."""
+
     return _request(
         "GET",
         f"/repos/{owner}/{repo}/issues/{issue_number}",
@@ -162,7 +151,7 @@ def create_issue(
     labels: list[str] | None = None,
     assignees: list[str] | None = None,
 ) -> Any:
-    """Create a new issue."""
+    """Create a GitHub issue."""
 
     payload: dict[str, Any] = {
         "title": title,
@@ -192,7 +181,7 @@ def update_issue(
     state: str | None = None,
     labels: list[str] | None = None,
 ) -> Any:
-    """Update an issue."""
+    """Update a GitHub issue."""
 
     payload: dict[str, Any] = {}
 
@@ -221,7 +210,7 @@ def close_issue(
     repo: str,
     issue_number: int,
 ) -> Any:
-    """Close an issue."""
+    """Close a GitHub issue."""
 
     return _request(
         "PATCH",
@@ -260,9 +249,9 @@ def list_issue_comments(
     )
 
 
-# ---------------------------------------------------------------------------
-# Branches
-# ---------------------------------------------------------------------------
+# ============================================================
+# BRANCHES
+# ============================================================
 
 @mcp.tool()
 def list_branches(
@@ -270,7 +259,7 @@ def list_branches(
     repo: str,
     per_page: int = 30,
 ) -> Any:
-    """List branches in a repo."""
+    """List branches in a repository."""
 
     return _request(
         "GET",
@@ -300,7 +289,7 @@ def create_branch(
     new_branch: str,
     from_branch: str = "main",
 ) -> Any:
-    """Create a new branch."""
+    """Create a new branch from another branch."""
 
     ref_data = _request(
         "GET",
@@ -333,9 +322,9 @@ def delete_branch(
     )
 
 
-# ---------------------------------------------------------------------------
-# Pull Requests
-# ---------------------------------------------------------------------------
+# ============================================================
+# PULL REQUESTS
+# ============================================================
 
 @mcp.tool()
 def list_pull_requests(
@@ -470,9 +459,9 @@ def list_pr_files(
     )
 
 
-# ---------------------------------------------------------------------------
-# Reviews
-# ---------------------------------------------------------------------------
+# ============================================================
+# REVIEWS
+# ============================================================
 
 @mcp.tool()
 def list_pr_reviews(
@@ -496,7 +485,7 @@ def create_pr_review(
     body: str = "",
     event: str = "COMMENT",
 ) -> Any:
-    """Create a review on a pull request."""
+    """Create a pull request review."""
 
     return _request(
         "POST",
@@ -508,9 +497,9 @@ def create_pr_review(
     )
 
 
-# ---------------------------------------------------------------------------
-# Commits
-# ---------------------------------------------------------------------------
+# ============================================================
+# COMMITS
+# ============================================================
 
 @mcp.tool()
 def list_commits(
@@ -519,7 +508,7 @@ def list_commits(
     branch: str | None = None,
     per_page: int = 30,
 ) -> Any:
-    """List commits on a repo."""
+    """List commits in a repository."""
 
     params: dict[str, Any] = {
         "per_page": per_page,
@@ -549,22 +538,16 @@ def get_commit(
     )
 
 
-# ---------------------------------------------------------------------------
-# Render / Streamable HTTP configuration
-# ---------------------------------------------------------------------------
+# ============================================================
+# STREAMABLE HTTP
+# ============================================================
 
-security = TransportSecuritySettings(
-    enable_dns_rebinding_protection=False
-)
-
-app = mcp.streamable_http_app(
-    transport_security=security
-)
+app = mcp.streamable_http_app()
 
 
-# ---------------------------------------------------------------------------
+# ============================================================
 # Local execution
-# ---------------------------------------------------------------------------
+# ============================================================
 
 if __name__ == "__main__":
     mcp.run()
